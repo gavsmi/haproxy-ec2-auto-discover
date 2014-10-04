@@ -1,0 +1,83 @@
+# global options
+global
+			# run in daemon mode
+        daemon
+			# user account process is run under
+		user haproxy
+		group haproxy
+			# log configuration to log to local syslog server
+        log 127.0.0.1 local0
+			# for restarts
+		pidfile /var/run/haproxy.pid
+			# stats socket for admin
+		stats socket /var/run/haproxy.stat mode 777
+			# uncomment below to enable verbose logging
+		#debug
+			
+# defaults for all other sections, unless overriden in the section
+defaults
+			# use the global log configuration (above)
+        log global
+			# run in layer 7 mode
+        mode http
+			# log in httplog format
+		option httplog
+			# disable logging of null connections
+        option dontlognull
+			# VERY IMPORTANT OPTION: analyze each request individually and evaluate acls for each request (don't run in tunnel mode)
+        option http-server-close
+			# make the server believe it will keep the connection alive
+		option http-pretend-keepalive
+			# redispatch the request in case of primary server is down
+		option redispatch
+        	# number of attempts until backend is marked as down
+		retries 3
+			# max number of concurrent active connections from an upstream server (per service)
+		maxconn 40000
+			# abort request if client closes its output channel while waiting for the request
+		option abortonclose
+        	
+			# max inactivity time on client (recommended to keep same as server timeout)
+		timeout client 30s
+			# max time given to server to respond
+		timeout server 30s
+			# max time to wait for server connection to succeed
+		timeout connect 5s
+			# max time to wait in queue for a connection
+		timeout queue 5s
+			# max time to keep alive waiting for new request
+		timeout http-keep-alive 1s
+			# max time to wait for client to send full request (keep short for DoS protection)
+		timeout http-request 5s
+
+			# prevent sending 408 errors, fixes issue with Chrome 
+		errorfile 408 /dev/null
+		
+# HTTP front end
+frontend http-in
+			# bind port 80 on all interfaces
+		bind *:80
+			# add the X-Forwarded-For header to all backend requests
+        option forwardfor
+		
+		default_backend www
+
+# www backend
+backend www
+			# configure health check URL
+		option httpchk GET /health
+	
+			# add auto-discovered backend instances
+		% for instance in instances:
+		server ${ instance.id } ${ instance.private_ip_address }:8080 check
+		% endfor
+
+# stats interface for monitoring
+listen stats :9090
+        mode http
+		no log
+		
+        stats enable
+		stats admin if TRUE
+        stats refresh 10s
+        stats uri /stats
